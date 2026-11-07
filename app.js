@@ -6,6 +6,9 @@ const money = value => `R$ ${Math.round(value).toLocaleString('pt-BR')}`;
 const pick = list => list[Math.floor(Math.random() * list.length)];
 const today = () => new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
 const safeNumber = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
+const safePercent = value => clamp(safeNumber(value));
+const safeColor = (value, fallback = '#7899b2') => /^#[0-9a-f]{6}$/i.test(String(value ?? '')) ? String(value) : fallback;
+const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character]));
 const mergeState = (base, saved) => Object.keys(base).reduce((result, key) => {
   const value = saved?.[key];
   result[key] = value && typeof value === 'object' && !Array.isArray(value) && base[key] && typeof base[key] === 'object'
@@ -17,9 +20,11 @@ const initialState = () => ({
   version: 2, name: 'Alex Martins', pronouns: 'ele/dele', country: 'Brasil', city: 'São Paulo',
   age: 24, year: 2025, money: 8420, happiness: 88, health: 92, reputation: 64,
   stress: 18, karma: 50, fame: 12, energy: 78, education: 76, credit: 780,
+  needs: { sleep: 78, social: 68, nutrition: 82, purpose: 74 },
+  hobbies: { music: 0, fitness: 0, creativity: 0 },
   talent: 'criatividade', trait: 'ambicioso', avatar: 'AM', dead: false,
-  healthConditions: [], arrestCount: 0, prisonYears: 0, partnerId: null,
-  cooldowns: {}, history: [], generations: [], children: [], educationCourse: null, educationHistory: [], goals: { emergency: 19440, home: 300000 },
+  healthConditions: [], arrestCount: 0, prisonYears: 0, partnerId: null, deathCause: null,
+  cooldowns: {}, history: [], generations: [], children: [], eventsOldest: false, educationCourse: null, educationHistory: [], goals: { emergency: 19440, home: 300000 },
   career: { title: 'Designer de Produto', company: 'Estúdio Aurora', salary: 7800, level: 4, skill: 78, employed: true, satisfaction: 74, remote: false },
   finances: { investments: 42000, property: 480000, vehicle: 126000, expenses: 3240, debt: 0 },
   skills: { criatividade: 78, inteligência: 70, carisma: 64, atletismo: 55, liderança: 62 },
@@ -40,7 +45,31 @@ let state = loadState();
 function loadState() {
   try {
     const saved = JSON.parse(localStorage.getItem(SAVE_KEY));
-    return mergeState(initialState(), saved || {});
+    const loaded = mergeState(initialState(), saved || {});
+    const base = initialState();
+    ['relationships', 'events', 'children', 'generations', 'healthConditions', 'educationHistory'].forEach(key => {
+      if (!Array.isArray(loaded[key])) loaded[key] = base[key];
+    });
+    ['relationships', 'events', 'children', 'generations', 'educationHistory'].forEach(key => {
+      loaded[key] = loaded[key].filter(value => value && typeof value === 'object' && !Array.isArray(value));
+    });
+    ['career', 'finances', 'goals', 'skills', 'cooldowns', 'needs', 'hobbies'].forEach(key => {
+      if (!loaded[key] || typeof loaded[key] !== 'object' || Array.isArray(loaded[key])) loaded[key] = base[key];
+    });
+    Object.keys(base.needs).forEach(key => { loaded.needs[key] = safePercent(loaded.needs[key]); });
+    Object.keys(base.hobbies).forEach(key => { loaded.hobbies[key] = Math.max(0, safeNumber(loaded.hobbies[key])); });
+    loaded.name = String(loaded.name ?? base.name).slice(0, 80);
+    loaded.city = String(loaded.city ?? base.city).slice(0, 80);
+    loaded.country = String(loaded.country ?? base.country).slice(0, 80);
+    loaded.age = Math.max(0, safeNumber(loaded.age, base.age));
+    loaded.year = Math.max(1900, safeNumber(loaded.year, base.year));
+    loaded.money = Math.max(0, safeNumber(loaded.money, base.money));
+    loaded.health = safePercent(loaded.health);
+    loaded.happiness = safePercent(loaded.happiness);
+    loaded.energy = safePercent(loaded.energy);
+    loaded.stress = safePercent(loaded.stress);
+    loaded.dead = loaded.dead === true;
+    return loaded;
   } catch { return initialState(); }
 }
 function saveState() {
@@ -49,7 +78,7 @@ function saveState() {
 }
 function toast(message) { const el = $('#toast'); if (!el) return; el.textContent = message; el.classList.add('show'); clearTimeout(toast.timer); toast.timer = setTimeout(() => el.classList.remove('show'), 2600); }
 function addEvent(icon, title, text, cls = '') { state.events.unshift({ icon, title, text, cls, time: 'Agora' }); state.events = state.events.slice(0, 9); }
-function renderEvents() { const list = $('#eventList'); if (list) list.innerHTML = state.events.map(e => `<div class="event"><div class="event-icon ${e.cls || ''}">${e.icon}</div><div><b>${e.title}</b><p>${e.text}</p><time>${e.time}</time></div></div>`).join(''); }
+function renderEvents() { const list = $('#eventList'); const filter = $('#vidaView .timeline-panel .filter-btn'); if (filter) filter.textContent = state.eventsOldest ? 'Mais recentes⌄' : 'Mais antigos⌄'; if (list) { const events = state.eventsOldest ? state.events.slice().reverse() : state.events; list.innerHTML = events.map(e => `<div class="event"><div class="event-icon ${escapeHTML(e.cls || '')}">${escapeHTML(e.icon)}</div><div><b>${escapeHTML(e.title)}</b><p>${escapeHTML(e.text)}</p><time>${escapeHTML(e.time)}</time></div></div>`).join(''); } }
 function setStat(name, value) { state[name] = clamp(safeNumber(value)); }
 function changeStat(name, amount) { setStat(name, safeNumber(state[name]) + amount); }
 function requireFunds(amount) {
@@ -79,10 +108,10 @@ function canAct(key, years = 1) {
 }
 function commit(message) { render(); if (message) toast(message); }
 function runAction(key, action) {
-  const previous = state.cooldowns[key]; const eventsBefore = state.events.length;
+  const previous = state.cooldowns[key]; const newestEventBefore = state.events[0];
   if (!canAct(key, 1)) return;
   action();
-  if (state.events.length === eventsBefore) {
+  if (state.events[0] === newestEventBefore) {
     if (previous === undefined) delete state.cooldowns[key]; else state.cooldowns[key] = previous;
   }
 }
@@ -118,24 +147,46 @@ function closeModal() { $('#modal')?.classList.add('hidden'); }
 function render() {
   const setText = (selector, text) => { const el = $(selector); if (el) el.textContent = text; };
   setText('#sideName', state.name); setText('#sideAge', `${state.age} anos · ${state.city}, ${state.country}`); setText('#money', money(state.money));
-  const heading = $('.page-heading h1'); if (heading && $('#vidaView')?.classList.contains('hidden') === false) heading.firstChild.textContent = `Olá, ${state.name.split(' ')[0]} `;
-  const eyebrow = $('.page-heading .eyebrow'); if (eyebrow && $('#vidaView')?.classList.contains('hidden') === false) eyebrow.textContent = `${today()} · ${state.year}`;
-  const stat = (id, value) => { const el = $(`#${id}`); if (el) el.innerHTML = `${Math.round(value)}<span class="unit">/100</span>`; };
+  const displayName = String(state.name ?? 'Alex Martins');
+  const heading = $('.page-heading h1'); if (heading && $('#vidaView')?.classList.contains('hidden') === false && heading.firstChild) heading.firstChild.textContent = `Olá, ${displayName.split(' ')[0]} `;
+  const eyebrow = $('.page-heading .eyebrow'); if (eyebrow && $('#vidaView')?.classList.contains('hidden') === false) eyebrow.textContent = `${today()} · ${safeNumber(state.year, 2026)}`;
+  const stat = (id, value) => { const el = $(`#${id}`); if (el) el.innerHTML = `${Math.round(safePercent(value))}<span class="unit">/100</span>`; };
   stat('happiness', state.happiness); stat('reputation', state.reputation);
-  const healthCard = $('.stats-grid .stat-card:nth-child(2) strong'); if (healthCard) healthCard.innerHTML = `${Math.round(state.health)}<span class="unit">/100</span>`;
-  const bars = $('.stats-grid .stat-card:nth-child(2) .progress i'); if (bars) bars.style.width = `${state.health}%`;
+  const healthCard = $('.stats-grid .stat-card:nth-child(2) strong'); if (healthCard) healthCard.innerHTML = `${Math.round(safePercent(state.health))}<span class="unit">/100</span>`;
+  const bars = $('.stats-grid .stat-card:nth-child(2) .progress i'); if (bars) bars.style.width = `${safePercent(state.health)}%`;
   const mood = state.happiness > 80 ? 'se sentindo inspirado' : state.happiness > 55 ? 'em equilíbrio' : state.happiness > 30 ? 'um pouco abatido' : 'precisando de cuidado';
   setText('#moodText', mood); const moodPercent = $('.mood i'); if (moodPercent) moodPercent.textContent = `${Math.round(state.happiness)}%`;
-  const avatar = $('.avatar'); if (avatar) avatar.textContent = state.avatar || state.name.slice(0, 2).toUpperCase(); const mini = $('.avatar-mini'); if (mini) mini.textContent = (state.avatar || state.name.slice(0, 2)).slice(0, 2);
+  const avatar = $('.avatar'); if (avatar) avatar.textContent = state.avatar || displayName.slice(0, 2).toUpperCase(); const mini = $('.avatar-mini'); if (mini) mini.textContent = String(state.avatar || displayName.slice(0, 2)).slice(0, 2);
   setText('#relCount', state.relationships.length); setText('#netWorth', money(state.money + state.finances.investments + state.finances.property + state.finances.vehicle - state.finances.debt));
   const financeCards = $$('#patrimonioView .stat-card strong');
   if (financeCards[1]) financeCards[1].textContent = money(state.finances.expenses);
   if (financeCards[2]) financeCards[2].textContent = money(state.finances.investments);
   setText('#monthlyExpenses', money(state.finances.expenses)); setText('#investmentValue', money(state.finances.investments));
-  if (financeCards[3]) financeCards[3].innerHTML = `${Math.round(state.credit)}<span class="unit">/900</span>`;
-  const financeBars = $$('#patrimonioView .progress i'); if (financeBars[0]) financeBars[0].style.width = `${state.credit / 9}%`;
-  setText('#debtValue', `Dívida: ${money(state.finances.debt)}`); setText('#historyCount', `${state.history.length} anos registrados`); setText('#lifeStatus', state.dead ? `Falecida aos ${state.age} anos` : `${state.age} anos · ${state.city}`);
-  renderEvents(); renderPeople(); renderFamily(); renderCareer(); renderEducation(); renderAssets(); renderHealth(); saveState();
+  if (financeCards[3]) financeCards[3].innerHTML = `${Math.round(clamp(safeNumber(state.credit), 0, 900))}<span class="unit">/900</span>`;
+  const financeBars = $$('#patrimonioView .progress i'); if (financeBars[0]) financeBars[0].style.width = `${clamp(safeNumber(state.credit), 0, 900) / 9}%`;
+  setText('#debtValue', `Dívida: ${money(state.finances.debt)}`); setText('#lifeStatus', state.dead ? `Vida encerrada aos ${state.age} anos` : `${state.age} anos · ${state.city}`);
+  renderEvents(); renderPeople(); renderFamily(); renderCareer(); renderEducation(); renderAssets(); renderHealth(); renderNeeds(); renderHobbies(); saveState();
+}
+function renderNeeds() {
+  const needs = state.needs || {};
+  const labels = { sleep: 'Descanso', social: 'Conexão', nutrition: 'Alimentação', purpose: 'Propósito' };
+  Object.entries(labels).forEach(([key, label]) => {
+    const value = safePercent(needs[key]); const bar = $(`#need-${key}`); const score = $(`#need-${key}-score`);
+    if (bar) { bar.style.width = `${value}%`; bar.classList.toggle('low', value < 35); }
+    if (score) score.textContent = `${Math.round(value)}/100`;
+  });
+  const note = $('#needsNote'); if (note) note.textContent = Math.min(...Object.values(needs).map(safePercent)) < 35 ? 'Alguma necessidade está pedindo atenção.' : 'Tudo certo por aqui — escolha o que combina com seu momento.';
+}
+function renderHobbies() {
+  const hobbies = state.hobbies || {};
+  const labels = { music: 'Música', fitness: 'Movimento', creativity: 'Criatividade' };
+  const rank = value => value < 20 ? 'Iniciante' : value < 40 ? 'Curioso(a)' : value < 65 ? 'Dedicado(a)' : value < 85 ? 'Habilidoso(a)' : 'Referência';
+  Object.entries(labels).forEach(([key]) => {
+    const value = safePercent(hobbies[key]);
+    const bar = $(`#hobby-${key}-bar`); const score = $(`#hobby-${key}-score`);
+    if (bar) { bar.style.width = `${value}%`; bar.classList.toggle('low', value < 20); }
+    if (score) score.textContent = `${rank(value)} · ${Math.round(value)}/100`;
+  });
 }
 function renderEducation() {
   const education = $('#educationScore'); if (education) education.textContent = `${Math.round(state.education)}/100`;
@@ -191,11 +242,11 @@ function renderFamily() {
   if (summary) summary.textContent = state.children.length ? `${state.children.length} filho(s) · suas decisões moldam este legado.` : 'Sua família acompanha suas escolhas.';
   const children = $('#childrenList');
   if (children) {
-    children.innerHTML = state.children.length ? state.children.map((child, index) => `<div class="goal"><span class="goal-icon">♡</span><div><b>${child.name}</b><small>${child.age || 0} ano(s) · ${child.adopted ? 'adotado(a)' : 'filho(a)'}</small></div><button class="filter-btn" data-child="${index}">Cuidar</button></div>`).join('') : '<div class="goal"><span class="goal-icon">♡</span><div><b>Nenhum filho ainda</b><small>Construir uma família é uma escolha para o seu momento.</small></div></div>';
+    children.innerHTML = state.children.length ? state.children.map((child, index) => `<div class="goal"><span class="goal-icon">♡</span><div><b>${escapeHTML(child.name)}</b><small>${safeNumber(child.age)} ano(s) · ${child.adopted ? 'adotado(a)' : 'filho(a)'}</small></div><button class="filter-btn" data-child="${index}">Cuidar</button></div>`).join('') : '<div class="goal"><span class="goal-icon">♡</span><div><b>Nenhum filho ainda</b><small>Construir uma família é uma escolha para o seu momento.</small></div></div>';
     $$('[data-child]', children).forEach(button => button.onclick = () => childMenu(state.children[Number(button.dataset.child)]));
   }
   const generations = $('#generationsList');
-  if (generations) generations.innerHTML = state.generations.length ? state.generations.slice().reverse().map(g => `<div class="goal"><span class="goal-icon">✦</span><div><b>${g.name} · ${g.age} anos</b><small>${g.career} · ${g.cause}</small></div></div>`).join('') : '<div class="goal"><span class="goal-icon">⌁</span><div><b>Seu legado começa aqui</b><small>Uma nova geração será registrada quando esta vida terminar.</small></div></div>';
+  if (generations) generations.innerHTML = state.generations.length ? state.generations.slice().reverse().map(g => `<div class="goal"><span class="goal-icon">✦</span><div><b>${escapeHTML(g.name)} · ${safeNumber(g.age)} anos</b><small>${escapeHTML(g.career)} · ${escapeHTML(g.cause)}</small></div></div>`).join('') : '<div class="goal"><span class="goal-icon">⌁</span><div><b>Seu legado começa aqui</b><small>Uma nova geração será registrada quando esta vida terminar.</small></div></div>';
   const generationSummary = $('#generationSummary'); if (generationSummary) generationSummary.textContent = state.generations.length ? `${state.generations.length} geração(ões) registrada(s)` : 'Nenhuma geração arquivada.';
 }
 function renderCareer() {
@@ -204,23 +255,24 @@ function renderCareer() {
   const title = $('.career-hero h2'); if (title) title.textContent = c.title;
   const place = $('.career-hero p'); if (place) place.textContent = `${c.company} · ${state.city}, ${state.country} · satisfação ${Math.round(c.satisfaction || 70)}/100${c.remote ? ' · remoto' : ''}`;
   const salary = $('.career-salary strong'); if (salary) salary.textContent = money(c.salary);
-  const skills = $('#skills'); if (skills) skills.innerHTML = Object.entries(state.skills).map(([name, value]) => `<div class="skill"><div class="skill-top"><b>${name[0].toUpperCase() + name.slice(1)}</b><span>${Math.round(value)}/100</span></div><div class="skill-bar"><i style="width:${value}%"></i></div></div>`).join('');
+  const skills = $('#skills'); if (skills) skills.innerHTML = Object.entries(state.skills || {}).map(([name, value]) => { const label = String(name); const percent = safePercent(value); return `<div class="skill"><div class="skill-top"><b>${escapeHTML(label ? label[0].toUpperCase() + label.slice(1) : 'Habilidade')}</b><span>${Math.round(percent)}/100</span></div><div class="skill-bar"><i style="width:${percent}%"></i></div></div>`; }).join('');
 }
 function renderPeople() {
   const grid = $('#peopleGrid'); if (!grid) return;
   grid.innerHTML = state.relationships.map(person => {
     const bond = person.affinity >= 80 ? 'vínculo muito próximo' : person.affinity >= 55 ? 'presença constante' : person.affinity >= 30 ? 'relação em construção' : 'vínculo distante';
     const romantic = person.romance > 40 && person.type !== 'family' ? ' · interesse romântico' : '';
-    return `<div class="person"><div class="person-avatar" style="background:${person.color}">${person.initials}</div><div><h3>${person.name}</h3><p>${person.role}${romantic} · ${bond}</p><div class="relationship"><i style="width:${person.affinity}%"></i></div></div><button data-rel="${person.id}">Interagir</button></div>`;
+    return `<div class="person"><div class="person-avatar" style="background:${escapeHTML(safeColor(person.color))}">${escapeHTML(person.initials)}</div><div><h3>${escapeHTML(person.name)}</h3><p>${escapeHTML(person.role)}${romantic} · ${bond}</p><div class="relationship"><i style="width:${safePercent(person.affinity)}%"></i></div></div><button data-rel="${escapeHTML(person.id)}">Interagir</button></div>`;
   }).join('');
   $$('[data-rel]', grid).forEach(button => button.onclick = () => relationshipMenu(state.relationships.find(p => p.id === button.dataset.rel)));
 }
 function renderHealth() {
-  const ring = $('.health-ring'); if (ring) ring.innerHTML = `${Math.round(state.health)}<span>/100</span>`;
-  const healthTitle = $('#healthSummary'); if (healthTitle) healthTitle.textContent = state.dead ? 'Esta jornada terminou' : state.health > 75 ? 'Você está muito bem' : state.health > 45 ? 'Atenção ao seu bem-estar' : 'Sua saúde precisa de cuidado';
-  const bars = $$('#saudeView .skill-bar i'); if (bars.length >= 3) { bars[0].style.width = `${state.health}%`; bars[1].style.width = `${clamp(state.happiness - state.stress / 2)}%`; bars[2].style.width = `${state.stress}%`; }
-  const conditions = $('#healthConditions'); if (conditions) conditions.textContent = state.healthConditions.length ? state.healthConditions.join(' · ') : 'Nenhuma condição diagnosticada';
-  const status = $('#lifeStatus'); if (status) status.textContent = state.dead ? 'Falecida' : `${state.age} anos · ${state.city}`;
+  const health = safePercent(state.health); const happiness = safePercent(state.happiness); const stress = safePercent(state.stress);
+  const ring = $('.health-ring'); if (ring) ring.innerHTML = `${Math.round(health)}<span>/100</span>`;
+  const healthTitle = $('#healthSummary'); if (healthTitle) healthTitle.textContent = state.dead ? 'Esta jornada terminou' : health > 75 ? 'Você está muito bem' : health > 45 ? 'Atenção ao seu bem-estar' : 'Sua saúde precisa de cuidado';
+  const bars = $$('#saudeView .skill-bar i'); if (bars.length >= 3) { bars[0].style.width = `${health}%`; bars[1].style.width = `${clamp(happiness - stress / 2)}%`; bars[2].style.width = `${stress}%`; }
+  const conditions = $('#healthConditions'); if (conditions) conditions.textContent = state.healthConditions.length ? state.healthConditions.map(condition => String(condition)).join(' · ') : 'Nenhuma condição diagnosticada';
+  const status = $('#lifeStatus'); if (status) status.textContent = state.dead ? 'Jornada encerrada' : `${safeNumber(state.age)} anos · ${String(state.city ?? '')}`;
 }
 function relationshipMenu(person) {
   if (!person || state.dead) return;
@@ -282,6 +334,12 @@ function advanceYear() {
   changeStat('happiness', deficit ? -6 : state.money > expenses ? 1 : -1);
   state.stress = clamp(state.stress + 3 + (deficit ? 5 : 0) - (state.trait === 'espiritual' ? 2 : 0));
   state.energy = clamp(state.energy + (state.age < 30 ? 2 : -3));
+  state.needs.sleep = clamp(state.needs.sleep - 5 + (state.energy > 60 ? 4 : 0));
+  state.needs.social = clamp(state.needs.social - 3 + (state.relationships.length ? 2 : 0));
+  state.needs.nutrition = clamp(state.needs.nutrition - 2 + (state.money > expenses ? 3 : 0));
+  state.needs.purpose = clamp(state.needs.purpose + (c.employed ? 2 : -4));
+  const neglectedNeeds = Object.values(state.needs).filter(value => value < 30).length;
+  if (neglectedNeeds) { state.stress = clamp(state.stress + neglectedNeeds * 4); state.health = clamp(state.health - neglectedNeeds * 2); }
   state.relationships.forEach(person => { person.affinity = clamp(person.affinity - (Math.random() < .4 ? 2 : 0)); });
   state.children.forEach(child => { child.age = safeNumber(child.age) + 1; });
   if (c.employed) {
@@ -293,8 +351,13 @@ function advanceYear() {
   const event = yearlyEvent(); addEvent(event.icon, event.title, event.text, event.cls);
   if (wasInPrison) addEvent('⚖', 'Um ano difícil', state.prisonYears ? `Você cumpriu mais um ano de prisão. Restam ${state.prisonYears}.` : 'Você cumpriu sua pena e está tentando reconstruir a vida.', 'pink');
   state.history.push({ year: state.year, age: state.age, money: Math.round(state.money), career: c.title });
-  if (state.health <= 0 || (state.age >= 92 && Math.random() < .15) || state.age >= 105) {
-    state.dead = true; addEvent('☾', 'O fim de uma jornada', 'Sua história terminou, mas seu legado permanece.', 'pink');
+  const reachedLimit = state.age >= 105;
+  const healthFailure = state.health <= 0;
+  const lateLifeRisk = state.age >= 92 && Math.random() < .15;
+  if (healthFailure || lateLifeRisk || reachedLimit) {
+    state.dead = true;
+    state.deathCause = healthFailure ? 'complicações de saúde' : reachedLimit ? 'idade avançada' : 'fim natural da jornada';
+    addEvent('☾', 'O fim de uma jornada', `Sua história terminou por ${state.deathCause}, mas seu legado permanece.`, 'pink');
   }
   commit(`Ano ${state.year}: ${income >= expenses ? 'suas contas fecharam no azul' : 'suas despesas exigiram atenção'}`);
 }
@@ -325,6 +388,52 @@ function quickAction(type) {
     ])]
   }; const action = actions[type]; if (action) openModal(action[0], action[1], action[2]);
 }
+function needsAction(type) {
+  if (state.dead) return toast('Esta vida chegou ao fim.');
+  const actions = {
+    sleep: () => { state.needs.sleep = clamp(state.needs.sleep + 24); state.energy = clamp(state.energy + 16); state.stress = clamp(state.stress - 8); addEvent('☾', 'Você cuidou do descanso', 'Uma pausa de verdade devolveu espaço para o próximo passo.'); },
+    social: () => { if (!state.relationships.length) return toast('Conheça alguém para criar conexões.'); const person = pick(state.relationships); person.affinity = clamp(person.affinity + 7); state.needs.social = clamp(state.needs.social + 22); state.happiness = clamp(state.happiness + 4); addEvent('♡', `Você se conectou com ${person.name}`, 'Uma conversa simples fez o dia parecer mais leve.', 'pink'); },
+    nutrition: () => { if (!requireResources(45, 2)) return; state.needs.nutrition = clamp(state.needs.nutrition + 25); state.health = clamp(state.health + 2); addEvent('♧', 'Uma refeição cuidadosa', 'Você escolheu alimentar seu corpo com atenção.'); },
+    purpose: () => { if (!requireEnergy(5)) return; state.needs.purpose = clamp(state.needs.purpose + 20); state.education = clamp(state.education + 1); state.happiness = clamp(state.happiness + 3); addEvent('✦', 'Um pequeno sentido', 'Você reservou tempo para algo que importa de verdade.'); }
+  };
+  if (actions[type]) { runAction(`need-${type}`, actions[type]); render(); }
+}
+function hobbyAction(type) {
+  if (state.dead) return toast('Esta vida chegou ao fim.');
+  const actions = {
+    music: () => {
+      if (!requireAge(8) || !requireResources(25, 8)) return;
+      state.hobbies.music = clamp(state.hobbies.music + 8);
+      state.skills.criatividade = clamp(state.skills.criatividade + 2);
+      state.needs.social = clamp(state.needs.social + 3);
+      state.needs.purpose = clamp(state.needs.purpose + 2);
+      changeStat('happiness', 2);
+      addEvent('♫', 'Você praticou música', 'Uma sessão de prática transformou curiosidade em repertório e expressão.', 'blue');
+    },
+    fitness: () => {
+      if (!requireAge(12) || !requireResources(30, 12)) return;
+      state.hobbies.fitness = clamp(state.hobbies.fitness + 8);
+      state.skills.atletismo = clamp(state.skills.atletismo + 3);
+      state.health = clamp(state.health + 3);
+      state.stress = clamp(state.stress - 4);
+      state.needs.sleep = clamp(state.needs.sleep + 2);
+      addEvent('♧', 'Você treinou com intenção', 'Seu corpo ganhou força e a rotina ficou um pouco mais leve.', 'blue');
+    },
+    creativity: () => {
+      if (!requireAge(6) || !requireEnergy(10)) return;
+      state.hobbies.creativity = clamp(state.hobbies.creativity + 8);
+      state.skills.criatividade = clamp(state.skills.criatividade + 3);
+      state.needs.purpose = clamp(state.needs.purpose + 5);
+      changeStat('happiness', 3);
+      addEvent('✎', 'Você criou algo novo', 'O resultado não precisava ser perfeito: precisava existir.', 'pink');
+    }
+  };
+  if (!actions[type]) return;
+  const before = state.events[0];
+  runAction(`hobby-${type}`, actions[type]);
+  render();
+  if (state.events[0] !== before) toast('Hobby praticado — seu progresso foi salvo.');
+}
 function activity(type) {
   if (state.dead) return toast('Esta vida chegou ao fim.');
   const actions = {
@@ -339,6 +448,7 @@ function activity(type) {
   }; const action = actions[type]; if (action) openModal(action[0], action[1], () => runAction(`activity-${type}`, action[2]));
 }
 function careerMenu() {
+  if (state.dead) return toast('Esta vida chegou ao fim. Comece uma nova história.');
   const c = state.career;
   openChoiceModal('Próximo passo profissional', c.employed ? `${c.title} · ${money(c.salary)}/mês · satisfação ${c.satisfaction || 70}/100` : 'Você está entre oportunidades. Escolhas pequenas podem reconstruir sua trajetória.', [
     { label: 'Negociar salário', detail: '6 energia; chance de ganhar 12% ou perder satisfação.', action: () => runAction('career-negotiate', () => { if (!c.employed || !requireEnergy(6)) return; if (c.skill >= 65 || Math.random() < .6) { c.salary = Math.round(c.salary * 1.12); c.satisfaction = clamp((c.satisfaction || 70) + 5); addEvent('↗', 'Negociação bem-sucedida', `Seu salário subiu para ${money(c.salary)} por mês.`, 'blue'); } else { c.satisfaction = clamp((c.satisfaction || 70) - 8); state.stress = clamp(state.stress + 8); addEvent('⚠', 'A negociação não avançou', 'Você saiu da conversa com mais clareza, mas sem aumento.'); } }) },
@@ -348,21 +458,27 @@ function careerMenu() {
   ]);
 }
 function setupBindings() {
-  $$('.nav-item').forEach(button => button.onclick = () => { $$('.nav-item').forEach(b => b.classList.remove('active')); button.classList.add('active'); $$('.section-view').forEach(view => view.classList.add('hidden')); $(`#${button.dataset.section}View`)?.classList.remove('hidden'); });
+  $$('.nav-item').forEach(button => button.onclick = () => { const view = $(`#${button.dataset.section}View`); if (!view) return toast('Esta área ainda está sendo preparada.'); $$('.nav-item').forEach(b => b.classList.remove('active')); button.classList.add('active'); $$('.section-view').forEach(section => section.classList.add('hidden')); view.classList.remove('hidden'); });
   $$('.action-grid button').forEach(button => button.onclick = () => quickAction(button.dataset.action));
   $$('.activity-grid button').forEach(button => button.onclick = () => activity(button.dataset.game));
-  $('#ageBtn').onclick = () => openModal('Virar um ano', 'O tempo passa, suas contas são processadas e as relações mudam. Quer descobrir o próximo capítulo?', advanceYear, 'Avançar');
-  $('#jobBtn').onclick = careerMenu;
-  $('#meetBtn').onclick = () => activity('dating');
-  $('#childBtn').onclick = () => openModal('Planejar família', 'Ter um filho exige estabilidade, cuidado e disponibilidade emocional. O custo inicial é de R$ 1.500.', () => runAction('family-child', () => { if (!requireAge(18) || !state.partnerId || !requireResources(1500, 12)) { if (!state.partnerId && state.age >= 18) toast('Você precisa de um parceiro para planejar esta família.'); return; } const child = { name: pick(['Luna', 'Theo', 'Clara', 'Miguel', 'Sofia']), age: 0, adopted: false }; state.children.push(child); changeStat('happiness', 8); addEvent('♡', 'Uma nova vida chegou', `${child.name} agora faz parte da sua família.`, 'pink'); }), 'Confirmar');
-  $('#adoptBtn').onclick = () => openModal('Considerar adoção', 'A adoção custa R$ 4.000 em preparação e acompanhamento. Você poderá oferecer um lar a uma criança.', () => runAction('family-adopt', () => { if (!requireAge(21) || !requireResources(4000, 16)) return; const child = { name: pick(['Bia', 'Davi', 'Nina', 'Ravi']), age: 2, adopted: true }; state.children.push(child); changeStat('happiness', 10); addEvent('♡', 'Adoção concluída', `${child.name} encontrou um lar com você.`, 'pink'); }), 'Iniciar processo');
-  $('#newQuote').onclick = () => { const q = pick([['O futuro pertence a quem acredita na beleza de seus sonhos.', '— Eleanor Roosevelt'], ['Não conte os dias, faça os dias contarem.', '— Muhammad Ali'], ['Tudo parece impossível até que seja feito.', '— Nelson Mandela']]); $('#quote').textContent = q[0]; $('#quote').nextElementSibling.textContent = q[1]; toast('Nova reflexão encontrada'); };
-  $('#settingsBtn').onclick = () => toast('Seu progresso está salvo neste dispositivo.'); $('#closeModal').onclick = $('#modalCancel').onclick = closeModal;
+  $$('[data-need]').forEach(button => button.onclick = () => needsAction(button.dataset.need));
+  $$('[data-hobby]').forEach(button => button.onclick = () => hobbyAction(button.dataset.hobby));
+  const ageBtn = $('#ageBtn'); if (ageBtn) ageBtn.onclick = () => openModal('Virar um ano', 'O tempo passa, suas contas são processadas e as relações mudam. Quer descobrir o próximo capítulo?', advanceYear, 'Avançar');
+  const jobBtn = $('#jobBtn'); if (jobBtn) jobBtn.onclick = careerMenu;
+  const meetBtn = $('#meetBtn'); if (meetBtn) meetBtn.onclick = () => activity('dating');
+  const childBtn = $('#childBtn'); if (childBtn) childBtn.onclick = () => openModal('Planejar família', 'Ter um filho exige estabilidade, cuidado e disponibilidade emocional. O custo inicial é de R$ 1.500.', () => runAction('family-child', () => { if (!requireAge(18) || !state.partnerId || !requireResources(1500, 12)) { if (!state.partnerId && state.age >= 18) toast('Você precisa de um parceiro para planejar esta família.'); return; } const child = { name: pick(['Luna', 'Theo', 'Clara', 'Miguel', 'Sofia']), age: 0, adopted: false }; state.children.push(child); changeStat('happiness', 8); addEvent('♡', 'Uma nova vida chegou', `${child.name} agora faz parte da sua família.`, 'pink'); }), 'Confirmar');
+  const adoptBtn = $('#adoptBtn'); if (adoptBtn) adoptBtn.onclick = () => openModal('Considerar adoção', 'A adoção custa R$ 4.000 em preparação e acompanhamento. Você poderá oferecer um lar a uma criança.', () => runAction('family-adopt', () => { if (!requireAge(21) || !requireResources(4000, 16)) return; const child = { name: pick(['Bia', 'Davi', 'Nina', 'Ravi']), age: 2, adopted: true }; state.children.push(child); changeStat('happiness', 10); addEvent('♡', 'Adoção concluída', `${child.name} encontrou um lar com você.`, 'pink'); }), 'Iniciar processo');
+  const quoteBtn = $('#newQuote'); if (quoteBtn) quoteBtn.onclick = () => { const q = pick([['O futuro pertence a quem acredita na beleza de seus sonhos.', '— Eleanor Roosevelt'], ['Não conte os dias, faça os dias contarem.', '— Muhammad Ali'], ['Tudo parece impossível até que seja feito.', '— Nelson Mandela']]); $('#quote').textContent = q[0]; $('#quote').nextElementSibling.textContent = q[1]; toast('Nova reflexão encontrada'); };
+  const settingsBtn = $('#settingsBtn'); if (settingsBtn) settingsBtn.onclick = () => toast('Seu progresso está salvo neste dispositivo.');
+  const closeModalBtn = $('#closeModal'); if (closeModalBtn) closeModalBtn.onclick = closeModal;
   $$('[data-modal]').forEach(button => button.onclick = () => button.dataset.modal === 'study' ? educationMenu() : modalAction(button.dataset.modal));
   $$('[data-course]').forEach(button => button.onclick = () => educationMenu(button.dataset.course));
-  $('#newLife').onclick = () => $('#customizer').classList.remove('hidden'); $('#closeCreator').onclick = () => $('#customizer').classList.add('hidden');
+  const avatarBtn = $('#avatarBtn'); if (avatarBtn) avatarBtn.onclick = () => { const vida = $('[data-section="vida"]'); if (vida) vida.click(); toast(`${state.name} · ${state.age} anos · ${state.city}`); };
+  const filterBtn = $('#vidaView .timeline-panel .filter-btn'); if (filterBtn) { filterBtn.onclick = () => { state.eventsOldest = !state.eventsOldest; renderEvents(); filterBtn.textContent = state.eventsOldest ? 'Mais recentes⌄' : 'Mais antigos⌄'; saveState(); }; }
+  const manageBtn = $('#patrimonioView .panel-title .filter-btn'); if (manageBtn) manageBtn.onclick = () => openChoiceModal('Gerenciar patrimônio', 'Escolha uma decisão financeira para este momento.', [{ label: 'Investir dinheiro', detail: 'Aplique R$ 500.', action: () => modalAction('invest') }, { label: 'Planejar uma viagem', detail: 'Uma experiência de R$ 4.200.', action: () => modalAction('travel') }]);
+  const newLife = $('#newLife'); if (newLife) newLife.onclick = () => $('#customizer')?.classList.remove('hidden'); const closeCreator = $('#closeCreator'); if (closeCreator) closeCreator.onclick = () => $('#customizer')?.classList.add('hidden');
   $$('.appearance-options button').forEach(button => button.onclick = () => { $$('.appearance-options button').forEach(b => b.classList.remove('selected')); button.classList.add('selected'); });
-  $('#createLife').onclick = createLife;
+  const createLifeBtn = $('#createLife'); if (createLifeBtn) createLifeBtn.onclick = createLife;
 }
 function modalAction(type) {
   const actions = {
@@ -373,11 +489,13 @@ function modalAction(type) {
   }; const action = actions[type]; if (action) openModal(action[0], action[1], action[2]);
 }
 function createLife() {
-  const name = $('#newName').value.trim().slice(0, 28) || 'Alex'; const city = $('#newCity').value.trim().slice(0, 28) || 'São Paulo';
-  const previous = state; const inheritance = previous.dead ? Math.round((previous.money + previous.finances.investments) * .15) : 0;
-  const archive = { name: previous.name, age: previous.age, year: previous.year, city: previous.city, country: previous.country, career: previous.career.title, money: Math.round(previous.money), cause: previous.dead ? 'fim da vida' : 'nova jornada' };
-  const fresh = initialState(); state = { ...fresh, name, city, pronouns: $('#newPronouns').value, country: $('#newCountry').value, talent: $('#newTalent').value, trait: $('#newTrait').value, age: 0, year: 2026, money: inheritance, happiness: 75, health: 85, reputation: 10, stress: 25, generations: [...(previous.generations || []), archive].slice(-12), career: { title: 'Sem profissão', company: '—', salary: 0, level: 0, skill: 20, employed: false }, relationships: [] };
+  const value = selector => $(selector)?.value?.trim() || ''; const name = value('#newName').slice(0, 28) || 'Alex'; const city = value('#newCity').slice(0, 28) || 'São Paulo';
+  const previous = state;
+  const liquidLegacy = Math.max(0, safeNumber(previous.money) + safeNumber(previous.finances?.investments) - safeNumber(previous.finances?.debt));
+  const inheritance = previous.dead ? Math.round(liquidLegacy * .15) : 0;
+  const archive = { name: previous.name, age: previous.age, year: previous.year, city: previous.city, country: previous.country, career: previous.career.title, money: Math.round(previous.money), cause: previous.dead ? (previous.deathCause || 'fim da vida') : 'nova jornada' };
+  const fresh = initialState(); state = { ...fresh, name, city, pronouns: value('#newPronouns') || fresh.pronouns, country: value('#newCountry') || fresh.country, talent: value('#newTalent') || fresh.talent, trait: value('#newTrait') || fresh.trait, age: 0, year: 2026, money: inheritance, happiness: 75, health: 85, reputation: 10, stress: 25, generations: [...(previous.generations || []), archive].slice(-12), career: { title: 'Sem profissão', company: '—', salary: 0, level: 0, skill: 20, employed: false }, relationships: [] };
   state.avatar = $('.appearance-options .selected')?.textContent || name.slice(0, 2).toUpperCase(); state.skills[state.talent] = clamp((state.skills[state.talent] || 50) + 15); state.events = [{ icon: '✦', cls: '', title: 'Você nasceu', text: inheritance ? `Uma nova história começou com uma herança de ${money(inheritance)}.` : `Uma nova história começou em ${city}, ${state.country}.`, time: 'Agora' }];
-  $('#customizer').classList.add('hidden'); render(); toast(`✦ Nova vida criada: ${name}`);
+  $('#customizer')?.classList.add('hidden'); render(); toast(`✦ Nova vida criada: ${name}`);
 }
 setupBindings(); render();

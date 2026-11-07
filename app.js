@@ -19,8 +19,8 @@ const initialState = () => ({
   stress: 18, karma: 50, fame: 12, energy: 78, education: 76, credit: 780,
   talent: 'criatividade', trait: 'ambicioso', avatar: 'AM', dead: false,
   healthConditions: [], arrestCount: 0, prisonYears: 0, partnerId: null,
-  cooldowns: {}, history: [], generations: [], children: [], goals: { emergency: 19440, home: 300000 },
-  career: { title: 'Designer de Produto', company: 'Estúdio Aurora', salary: 7800, level: 4, skill: 78, employed: true },
+  cooldowns: {}, history: [], generations: [], children: [], educationCourse: null, educationHistory: [], goals: { emergency: 19440, home: 300000 },
+  career: { title: 'Designer de Produto', company: 'Estúdio Aurora', salary: 7800, level: 4, skill: 78, employed: true, satisfaction: 74, remote: false },
   finances: { investments: 42000, property: 480000, vehicle: 126000, expenses: 3240, debt: 0 },
   skills: { criatividade: 78, inteligência: 70, carisma: 64, atletismo: 55, liderança: 62 },
   relationships: [
@@ -91,7 +91,11 @@ function openModal(title, text, action, confirm = 'Escolher este caminho') {
   if (actions) actions.innerHTML = '<button class="secondary-btn" id="modalCancel">Agora não</button><button class="primary-btn" id="modalOk"></button>';
   $('#modalTitle').textContent = title; $('#modalText').textContent = text; $('#modalOk').textContent = confirm;
   $('#modal').classList.remove('hidden'); $('#modalCancel').onclick = closeModal;
-  $('#modalOk').onclick = () => { $('#modal').classList.add('hidden'); if (action) action(); render(); };
+  $('#modalOk').onclick = () => {
+    $('#modal').classList.add('hidden');
+    if (state.dead) { toast('Esta vida chegou ao fim. Comece uma nova história.'); return; }
+    if (action) action(); render();
+  };
 }
 function openChoiceModal(title, intro, choices) {
   $('#modalTitle').textContent = title; $('#modalText').textContent = intro;
@@ -100,7 +104,11 @@ function openChoiceModal(title, intro, choices) {
   choices.forEach((choice, index) => {
     const button = document.createElement('button'); button.className = index === 0 ? 'primary-btn' : 'secondary-btn';
     button.textContent = choice.label; button.title = choice.detail || '';
-    button.onclick = () => { $('#modal').classList.add('hidden'); choice.action(); render(); };
+    button.onclick = () => {
+      $('#modal').classList.add('hidden');
+      if (state.dead) { toast('Esta vida chegou ao fim. Comece uma nova história.'); return; }
+      choice.action(); render();
+    };
     actions.appendChild(button);
   });
   $('#modal').classList.remove('hidden'); $('#modalCancel').onclick = closeModal;
@@ -131,8 +139,46 @@ function render() {
 }
 function renderEducation() {
   const education = $('#educationScore'); if (education) education.textContent = `${Math.round(state.education)}/100`;
-  const course = $('#currentCourse'); if (course) course.textContent = state.education >= 90 ? 'Formação avançada concluída' : state.education >= 70 ? 'Design e Tecnologia · concluído' : state.education >= 40 ? 'Ensino médio · em progresso' : 'Ensino básico · em progresso';
-  const study = $('#studyHint'); if (study) study.textContent = state.age < 6 ? 'Disponível a partir dos 6 anos' : `Progresso geral: ${Math.round(state.education)}%`;
+  const active = state.educationCourse;
+  const course = $('#currentCourse');
+  if (course) course.textContent = active ? `${active.name} · ${active.progress}% concluído` : (state.education >= 90 ? 'Formação avançada concluída' : state.education >= 70 ? 'Design e Tecnologia · concluído' : state.education >= 40 ? 'Ensino médio · em progresso' : 'Ensino básico · em progresso');
+  const study = $('#studyHint'); if (study) study.textContent = state.age < 6 ? 'Disponível a partir dos 6 anos' : active ? `Módulo atual: ${active.module} · energia e foco definem seu ritmo` : `Progresso geral: ${Math.round(state.education)}%`;
+  $$('[data-course]').forEach(button => {
+    const done = (state.educationHistory || []).some(item => item.id === button.dataset.course);
+    const courseData = educationCourses[button.dataset.course];
+    const label = $('[data-course-label]', button);
+    if (courseData && label) label.textContent = done ? `${courseData.name} · concluído` : courseData.name;
+  });
+}
+const educationCourses = {
+  direito: { name: 'Direito', cost: 900, energy: 10, gain: 7, skill: 'liderança', unlock: 'Consultoria jurídica' },
+  medicina: { name: 'Medicina', cost: 1400, energy: 14, gain: 9, skill: 'inteligência', unlock: 'Pesquisa em saúde' },
+  artes: { name: 'Artes cênicas', cost: 650, energy: 8, gain: 6, skill: 'carisma', unlock: 'Entretenimento' },
+  mba: { name: 'MBA em negócios', cost: 1100, energy: 12, gain: 8, skill: 'liderança', unlock: 'Gestão executiva' }
+};
+function educationMenu(courseId = null) {
+  if (state.dead) return toast('Esta vida chegou ao fim.');
+  const entries = Object.entries(educationCourses);
+  if (courseId && educationCourses[courseId]) entries.sort(([id]) => id === courseId ? -1 : 1);
+  const choices = entries.map(([id, course]) => ({
+    label: `${course.name} · ${money(course.cost)}`,
+    detail: `${course.energy} energia; aumenta educação e ${course.skill}. Desbloqueia ${course.unlock}.`,
+    action: () => runAction(`course-${id}`, () => {
+      if (!requireAge(6)) return;
+      const current = state.educationCourse;
+      if ((state.educationHistory || []).some(item => item.id === id)) return toast(`${course.name} já está no seu histórico de formação.`);
+      if (current && current.id !== id && current.progress < 100) return toast(`Conclua ${current.name} antes de trocar de curso.`);
+      if (!requireResources(course.cost, course.energy)) return;
+      const progress = current?.id === id ? current.progress : 0;
+      const next = clamp(progress + course.gain * (state.trait === 'ambicioso' ? 1.2 : 1));
+      state.educationCourse = { id, name: course.name, module: next >= 70 ? 'projeto final' : next >= 35 ? 'prática' : 'fundamentos', progress: Math.round(next) };
+      state.education = clamp(state.education + course.gain);
+      state.skills[course.skill] = clamp((state.skills[course.skill] || 50) + 3);
+      if (next >= 100) { state.educationHistory.push({ id, name: course.name, year: state.year }); state.educationCourse = null; addEvent('⌘', `${course.name} concluído`, `Seu certificado desbloqueou ${course.unlock}.`, 'blue'); }
+      else addEvent('⌘', `Você avançou em ${course.name}`, `O módulo de ${state.educationCourse.module} está ${Math.round(next)}% concluído.`);
+    })
+  }));
+  openChoiceModal('Escolha sua formação', 'Cursos têm custo, ritmo e portas diferentes. Você pode estudar novamente para avançar no mesmo curso.', choices);
 }
 function renderAssets() {
   const property = $('#propertyValue'); if (property) property.textContent = money(state.finances.property);
@@ -156,7 +202,7 @@ function renderCareer() {
   const c = state.career; const hero = $('.career-hero'); if (!hero) return;
   const tag = $('.career-hero .tag'); if (tag) tag.textContent = c.employed ? `EM ASCENSÃO · NÍVEL ${c.level}` : 'EM BUSCA DE UMA OPORTUNIDADE';
   const title = $('.career-hero h2'); if (title) title.textContent = c.title;
-  const place = $('.career-hero p'); if (place) place.textContent = `${c.company} · ${state.city}, ${state.country}`;
+  const place = $('.career-hero p'); if (place) place.textContent = `${c.company} · ${state.city}, ${state.country} · satisfação ${Math.round(c.satisfaction || 70)}/100${c.remote ? ' · remoto' : ''}`;
   const salary = $('.career-salary strong'); if (salary) salary.textContent = money(c.salary);
   const skills = $('#skills'); if (skills) skills.innerHTML = Object.entries(state.skills).map(([name, value]) => `<div class="skill"><div class="skill-top"><b>${name[0].toUpperCase() + name.slice(1)}</b><span>${Math.round(value)}/100</span></div><div class="skill-bar"><i style="width:${value}%"></i></div></div>`).join('');
 }
@@ -232,14 +278,15 @@ function advanceYear() {
   if (deficit) { state.finances.debt += deficit; state.credit = clamp(state.credit - 35, 0, 900); }
   else { state.finances.debt = Math.max(0, state.finances.debt - Math.min(state.finances.debt, income * .05)); state.credit = clamp(state.credit + 8, 0, 900); }
   const agePenalty = state.age > 70 ? 2.5 : state.age > 45 ? 1 : .25;
-  state.health -= agePenalty + (state.stress > 70 ? 1.5 : 0);
-  state.happiness += deficit ? -6 : state.money > expenses ? 1 : -1;
+  state.health = clamp(state.health - agePenalty - (state.stress > 70 ? 1.5 : 0));
+  changeStat('happiness', deficit ? -6 : state.money > expenses ? 1 : -1);
   state.stress = clamp(state.stress + 3 + (deficit ? 5 : 0) - (state.trait === 'espiritual' ? 2 : 0));
   state.energy = clamp(state.energy + (state.age < 30 ? 2 : -3));
   state.relationships.forEach(person => { person.affinity = clamp(person.affinity - (Math.random() < .4 ? 2 : 0)); });
   state.children.forEach(child => { child.age = safeNumber(child.age) + 1; });
   if (c.employed) {
     c.skill = clamp(c.skill + (state.education > 70 ? 4 : 2));
+    c.satisfaction = clamp((c.satisfaction || 70) + (c.remote ? 1 : -1) - (state.stress > 70 ? 3 : 0));
     if (Math.random() < .3 && c.level < 10) { c.level++; c.salary = Math.round(c.salary * 1.08); addEvent('↗', 'Uma promoção chegou', `Seu salário agora é ${money(c.salary)} por mês.`, 'blue'); }
   }
   if (state.age >= 45 && Math.random() < .08 && !state.healthConditions.includes('pressão alta')) state.healthConditions.push('pressão alta');
@@ -261,12 +308,22 @@ function yearlyEvent() {
 }
 function quickAction(type) {
   if (state.dead) return toast('Esta vida chegou ao fim.');
+  if (type === 'learn') return educationMenu();
+  if (type === 'social') {
+    if (!state.relationships.length) return toast('Você ainda não tem ninguém para convidar.');
+    return openChoiceModal('Como você quer se conectar?', 'Uma conversa pode fortalecer um vínculo diferente de uma festa ou de uma ajuda concreta.', state.relationships.map(p => ({ label: `${p.name} · ${p.affinity}/100`, detail: 'R$ 80 e 8 de energia; aumenta afinidade e felicidade.', action: () => runAction(`quick-social-${p.id}`, () => { if (!requireResources(80, 8)) return; p.affinity = clamp(p.affinity + 8); changeStat('happiness', 5); changeStat('reputation', 2); addEvent('♧', `Uma noite memorável com ${p.name}`, 'Você escolheu presença em vez de rotina.', 'pink'); }) })));
+  }
   const actions = {
-    explore: ['Uma descoberta inesperada', 'Você encontrou uma livraria escondida. Um livro raro custou R$ 45.', () => { if (!requireResources(45, 6)) return; changeStat('happiness', 4); addEvent('⌁', 'Uma nova descoberta', 'Uma livraria escondida mudou seu caminho hoje.'); }],
-    learn: ['Hora de crescer', 'Um curso intensivo vai consumir tempo, mas aumentar sua habilidade.', () => { if (!requireAge(6) || !requireEnergy(12)) return; state.education = clamp(state.education + 5); state.skills[state.talent] = clamp((state.skills[state.talent] || 50) + 4); changeStat('happiness', 2); addEvent('⊙', 'Você começou a aprender', 'Um curso abriu novas possibilidades.', 'blue'); }],
-    social: ['Um convite especial', 'Marina está organizando um jantar. O custo é R$ 80, mas a conexão pode valer muito mais.', () => { if (!state.relationships.length) return toast('Você ainda não tem ninguém para convidar.'); if (!requireResources(80, 8)) return; const p = state.relationships[0]; p.affinity = clamp(p.affinity + 8); changeStat('happiness', 5); changeStat('reputation', 2); addEvent('♧', 'Uma noite memorável', `Você passou a noite com ${p.name}.`, 'pink'); }],
-    rest: ['Pausa merecida', 'Você desligou o celular e recuperou as energias.', () => { state.stress = clamp(state.stress - 12); state.energy = clamp(state.energy + 15); changeStat('happiness', 3); addEvent('☾', 'Você cuidou de si', 'Descanso também é parte da jornada.'); }]
-  }; const action = actions[type]; if (action) openModal(action[0], action[1], () => runAction(`quick-${type}`, action[2]));
+    explore: ['Uma descoberta inesperada', 'Escolha entre uma experiência cultural, uma aventura ou uma oportunidade que exige coragem.', () => openChoiceModal('O que você encontrou?', 'Nem toda descoberta custa dinheiro; algumas cobram atenção e risco.', [
+      { label: 'Visitar uma livraria', detail: 'R$ 45 e 6 energia; aumenta educação e felicidade.', action: () => runAction('quick-explore-book', () => { if (!requireResources(45, 6)) return; state.education = clamp(state.education + 2); changeStat('happiness', 4); addEvent('⌁', 'Uma nova descoberta', 'Um livro raro abriu uma pergunta que você ainda quer responder.'); }) },
+      { label: 'Trilha improvisada', detail: '4 energia; melhora saúde, mas exige preparo.', action: () => runAction('quick-explore-trail', () => { if (!requireEnergy(4)) return; state.health = clamp(state.health + 2); state.stress = clamp(state.stress - 4); addEvent('♧', 'Você saiu da rota', 'O corpo lembrou que curiosidade também pode ser movimento.', 'blue'); }) },
+      { label: 'Aceitar um risco', detail: 'Sem custo; pode trazer dinheiro ou estresse.', action: () => runAction('quick-explore-risk', () => { if (Math.random() < .55) { state.money += 350; addEvent('↗', 'Uma oportunidade inesperada', 'Sua curiosidade rendeu um pequeno trabalho.'); } else { state.stress = clamp(state.stress + 8); addEvent('⚠', 'Uma descoberta desconfortável', 'Você aprendeu a avaliar melhor os riscos antes de dizer sim.'); } }) }
+    ])],
+    rest: ['Pausa merecida', 'Escolha como recuperar seu corpo e sua mente.', () => openChoiceModal('Como descansar?', 'Descanso não é igual para todo mundo.', [
+      { label: 'Dormir sem culpa', detail: 'Recupera 20 energia e reduz 8 estresse.', action: () => runAction('quick-rest-sleep', () => { state.stress = clamp(state.stress - 8); state.energy = clamp(state.energy + 20); changeStat('happiness', 3); addEvent('☾', 'Você dormiu de verdade', 'Seu corpo recebeu o tempo que vinha pedindo.'); }) },
+      { label: 'Desacelerar com alguém', detail: '4 energia; reduz estresse e fortalece relações.', action: () => runAction('quick-rest-social', () => { if (!state.relationships.length || !requireEnergy(4)) return; const p = pick(state.relationships); p.affinity = clamp(p.affinity + 4); state.stress = clamp(state.stress - 10); addEvent('♡', `Um descanso compartilhado com ${p.name}`, 'Você não precisou resolver nada: só estar presente.'); }) }
+    ])]
+  }; const action = actions[type]; if (action) openModal(action[0], action[1], action[2]);
 }
 function activity(type) {
   if (state.dead) return toast('Esta vida chegou ao fim.');
@@ -281,18 +338,28 @@ function activity(type) {
     fame: ['Buscar fama', 'Um vídeo seu pode viralizar, mas a exposição cobra seu preço.', () => { if (!requireAge(13) || !requireEnergy(8)) return; changeStat('reputation', 10); state.fame += 8; state.stress = clamp(state.stress + 3); addEvent('★', 'Você ficou famoso', 'Seu rosto está em todos os lugares hoje.', 'blue'); }]
   }; const action = actions[type]; if (action) openModal(action[0], action[1], () => runAction(`activity-${type}`, action[2]));
 }
+function careerMenu() {
+  const c = state.career;
+  openChoiceModal('Próximo passo profissional', c.employed ? `${c.title} · ${money(c.salary)}/mês · satisfação ${c.satisfaction || 70}/100` : 'Você está entre oportunidades. Escolhas pequenas podem reconstruir sua trajetória.', [
+    { label: 'Negociar salário', detail: '6 energia; chance de ganhar 12% ou perder satisfação.', action: () => runAction('career-negotiate', () => { if (!c.employed || !requireEnergy(6)) return; if (c.skill >= 65 || Math.random() < .6) { c.salary = Math.round(c.salary * 1.12); c.satisfaction = clamp((c.satisfaction || 70) + 5); addEvent('↗', 'Negociação bem-sucedida', `Seu salário subiu para ${money(c.salary)} por mês.`, 'blue'); } else { c.satisfaction = clamp((c.satisfaction || 70) - 8); state.stress = clamp(state.stress + 8); addEvent('⚠', 'A negociação não avançou', 'Você saiu da conversa com mais clareza, mas sem aumento.'); } }) },
+    { label: 'Desenvolver uma habilidade', detail: 'R$ 180 e 10 energia; melhora sua competitividade.', action: () => runAction('career-training', () => { if (!c.employed || !requireResources(180, 10)) return; c.skill = clamp(c.skill + 6); state.skills.liderança = clamp(state.skills.liderança + 3); c.satisfaction = clamp((c.satisfaction || 70) + 3); addEvent('⌘', 'Você investiu na carreira', `Sua prontidão profissional chegou a ${Math.round(c.skill)}/100.`); }) },
+    { label: c.remote ? 'Voltar ao escritório' : 'Trabalhar remotamente', detail: '4 energia; altera satisfação e rotina.', action: () => runAction('career-remote', () => { if (!c.employed || !requireEnergy(4)) return; c.remote = !c.remote; c.satisfaction = clamp((c.satisfaction || 70) + (c.remote ? 7 : -2)); state.stress = clamp(state.stress + (c.remote ? -5 : 3)); addEvent('⌂', c.remote ? 'Você adotou uma rotina remota' : 'Você voltou ao escritório', 'Sua forma de trabalhar agora tem novas exigências e liberdades.'); }) },
+    { label: c.employed ? 'Pedir demissão' : 'Aceitar uma oportunidade', detail: c.employed ? 'Sem custo; liberdade agora, mas renda zero até se recolocar.' : '6 energia; cursos concluídos podem abrir uma área especializada.', action: () => runAction('career-change', () => { if (c.employed) { c.employed = false; c.title = 'Em transição'; c.company = '—'; c.salary = 0; c.satisfaction = 55; addEvent('↗', 'Você encerrou um ciclo profissional', 'Agora terá de equilibrar liberdade, dinheiro e o próximo passo.'); } else if (requireAge(16) && requireEnergy(6)) { const completed = new Set((state.educationHistory || []).map(course => course.id)); const opportunity = completed.has('direito') ? ['Consultor(a) jurídico(a)', 'Núcleo Cívico', 7200] : completed.has('medicina') ? ['Pesquisador(a) em saúde', 'Instituto Horizonte', 8600] : completed.has('mba') ? ['Gestor(a) de negócios', 'Coletivo Horizonte', 7800] : completed.has('artes') ? ['Produtor(a) cultural', 'Casa Aberta', 6100] : ['Analista de projetos', 'Coletivo Horizonte', 4200 + state.education * 12]; c.employed = true; c.title = opportunity[0]; c.company = opportunity[1]; c.salary = opportunity[2]; c.level = Math.max(1, c.level); c.skill = clamp(c.skill + 5); c.satisfaction = 70; addEvent('↗', 'Você voltou ao mercado', `${c.title} começa com ${money(c.salary)} por mês em ${c.company}.`, 'blue'); } }) }
+  ]);
+}
 function setupBindings() {
   $$('.nav-item').forEach(button => button.onclick = () => { $$('.nav-item').forEach(b => b.classList.remove('active')); button.classList.add('active'); $$('.section-view').forEach(view => view.classList.add('hidden')); $(`#${button.dataset.section}View`)?.classList.remove('hidden'); });
   $$('.action-grid button').forEach(button => button.onclick = () => quickAction(button.dataset.action));
   $$('.activity-grid button').forEach(button => button.onclick = () => activity(button.dataset.game));
   $('#ageBtn').onclick = () => openModal('Virar um ano', 'O tempo passa, suas contas são processadas e as relações mudam. Quer descobrir o próximo capítulo?', advanceYear, 'Avançar');
-  $('#jobBtn').onclick = () => openModal('Uma proposta chegou', 'Uma startup quer você como líder de design. O salário será maior, mas o risco também.', () => runAction('career', () => { if (!requireAge(16) || !requireEnergy(6)) return; state.career.title = 'Líder de Design'; state.career.company = 'Núcleo Lab'; state.career.salary += 2400; state.career.level++; addEvent('↗', 'Você aceitou uma proposta', 'Uma mudança profissional abriu novas possibilidades.', 'blue'); }));
+  $('#jobBtn').onclick = careerMenu;
   $('#meetBtn').onclick = () => activity('dating');
   $('#childBtn').onclick = () => openModal('Planejar família', 'Ter um filho exige estabilidade, cuidado e disponibilidade emocional. O custo inicial é de R$ 1.500.', () => runAction('family-child', () => { if (!requireAge(18) || !state.partnerId || !requireResources(1500, 12)) { if (!state.partnerId && state.age >= 18) toast('Você precisa de um parceiro para planejar esta família.'); return; } const child = { name: pick(['Luna', 'Theo', 'Clara', 'Miguel', 'Sofia']), age: 0, adopted: false }; state.children.push(child); changeStat('happiness', 8); addEvent('♡', 'Uma nova vida chegou', `${child.name} agora faz parte da sua família.`, 'pink'); }), 'Confirmar');
   $('#adoptBtn').onclick = () => openModal('Considerar adoção', 'A adoção custa R$ 4.000 em preparação e acompanhamento. Você poderá oferecer um lar a uma criança.', () => runAction('family-adopt', () => { if (!requireAge(21) || !requireResources(4000, 16)) return; const child = { name: pick(['Bia', 'Davi', 'Nina', 'Ravi']), age: 2, adopted: true }; state.children.push(child); changeStat('happiness', 10); addEvent('♡', 'Adoção concluída', `${child.name} encontrou um lar com você.`, 'pink'); }), 'Iniciar processo');
   $('#newQuote').onclick = () => { const q = pick([['O futuro pertence a quem acredita na beleza de seus sonhos.', '— Eleanor Roosevelt'], ['Não conte os dias, faça os dias contarem.', '— Muhammad Ali'], ['Tudo parece impossível até que seja feito.', '— Nelson Mandela']]); $('#quote').textContent = q[0]; $('#quote').nextElementSibling.textContent = q[1]; toast('Nova reflexão encontrada'); };
   $('#settingsBtn').onclick = () => toast('Seu progresso está salvo neste dispositivo.'); $('#closeModal').onclick = $('#modalCancel').onclick = closeModal;
-  $$('[data-modal]').forEach(button => button.onclick = () => modalAction(button.dataset.modal));
+  $$('[data-modal]').forEach(button => button.onclick = () => button.dataset.modal === 'study' ? educationMenu() : modalAction(button.dataset.modal));
+  $$('[data-course]').forEach(button => button.onclick = () => educationMenu(button.dataset.course));
   $('#newLife').onclick = () => $('#customizer').classList.remove('hidden'); $('#closeCreator').onclick = () => $('#customizer').classList.add('hidden');
   $$('.appearance-options button').forEach(button => button.onclick = () => { $$('.appearance-options button').forEach(b => b.classList.remove('selected')); button.classList.add('selected'); });
   $('#createLife').onclick = createLife;

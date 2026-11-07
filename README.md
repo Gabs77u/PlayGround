@@ -1,18 +1,37 @@
-# PlayGround
+# VIVA — simulador de vida
 
-<!-- omgithub:readme:start -->
-## 🚀 Build, play, and remix with OMGithub
+VIVA é uma SPA single-player em português sobre escolhas, consequências e novas gerações. A experiência funciona localmente no navegador, sem backend ou multiplayer.
 
-**Created using [OMGithub.com](https://go.ondev.store/).**
+## Como executar
 
-[![OMGithub](https://img.shields.io/badge/OMGithub-Open%20project-orange?style=for-the-badge)](https://go.ondev.store/Gabs77u/PlayGround)
-[![GitHub](https://img.shields.io/badge/GitHub-Source-181717?logo=github&style=for-the-badge)](https://github.com/Gabs77u/PlayGround)
+Abra `index.html` no navegador ou use o wrapper existente:
 
-- 🎮 [Open the project](https://go.ondev.store/Gabs77u/PlayGround).
-- ✨ [Remix this project](https://go.ondev.store/Gabs77u/PlayGround?remix=1).
-- 💻 [Explore the source](https://github.com/Gabs77u/PlayGround).
-- 🛠️ [Check build runs](https://github.com/Gabs77u/PlayGround/actions).
-- 🐛 [Report an issue](https://github.com/Gabs77u/PlayGround/issues).
-- 👤 [Explore the creator's projects](https://go.ondev.store/Gabs77u).
-- 🌍 [Create with OMGithub](https://go.ondev.store/).
-<!-- omgithub:readme:end -->
+```bash
+./start.sh
+```
+
+O jogo também pode ser servido por qualquer servidor estático. `capture.sh` é um utilitário opcional para validação/capturas locais.
+
+## Sistemas
+
+- avanço anual com renda, despesas, investimentos, dívidas, crédito, saúde, energia e envelhecimento;
+- educação, habilidades, carreira, promoções, reputação e fama;
+- relações, romance, parceiro e eventos sociais;
+- família, filhos biológicos ou adotivos e painel de legado entre gerações;
+- patrimônio, metas financeiras, viagens e saúde;
+- atividades com requisitos de idade, energia, dinheiro e cooldown anual;
+- crime com risco de prisão, pena, multas e consequências persistentes;
+- morte, herança parcial e arquivo de até 12 gerações;
+- criação de novas vidas com país, cidade, personalidade, talento e aparência.
+
+## Persistência
+
+O estado é salvo automaticamente no `localStorage` usando a chave `viva-save-v2`. Saves anteriores são mesclados com os valores padrão para manter compatibilidade quando novos sistemas são adicionados. Para recomeçar completamente, remova essa chave pelas ferramentas de armazenamento do navegador.
+
+## Desenvolvimento
+
+A interface está dividida em `index.html`, `style.css` e `app.js`. O estado centralizado é atualizado por ações e sincronizado pela função `render()`. Para verificar a sintaxe do JavaScript:
+
+```bash
+node --check app.js
+```

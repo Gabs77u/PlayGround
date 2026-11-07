@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VIVA — seu universo, suas escolhas</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand"><div class="brand-mark">✦</div><div><strong>VIVA</strong><span>um simulador de vida</span></div></div>
+      <div class="top-actions"><div class="save-state"><span class="dot"></span> autosalvo</div><button class="icon-btn" id="settingsBtn" aria-label="Configurações">⚙</button><button class="avatar-mini">AM</button></div>
+    </header>
+    <main class="layout">
+      <aside class="sidebar">
+        <div class="profile-card">
+          <div class="profile-head"><div class="avatar">AM</div><div><h2 id="sideName">Alex Martins</h2><p id="sideAge">24 anos · São Paulo, SP</p></div></div>
+          <div class="mood"><span>☀</span> <b id="moodText">se sentindo inspirado</b><i>88%</i></div>
+        </div>
+        <nav class="nav"><button class="nav-item active" data-section="vida"><span>◈</span> Minha vida <em>⌂</em></button><button class="nav-item" data-section="carreira"><span>↗</span> Carreira <em>2</em></button><button class="nav-item" data-section="relacoes"><span>♡</span> Relações <em id="relCount">4</em></button><button class="nav-item" data-section="conquistas"><span>✦</span> Conquistas</button></nav>
+        <div class="side-bottom"><div class="streak"><span class="flame">♨</span><div><b>7 dias de sequência</b><small>Continue explorando sua história</small></div></div><button class="new-life" id="newLife">＋ Começar nova vida</button></div>
+      </aside>
+      <section class="content">
+        <div class="section-view" id="vidaView">
+          <div class="page-heading"><div><p class="eyebrow">QUARTA-FEIRA, 18 DE JUNHO DE 2025</p><h1>Olá, Alex <span>✦</span></h1><p class="subtitle">Cada escolha abre um novo caminho.</p></div><button class="primary-btn" id="ageBtn">⏱ Avançar um ano</button></div>
+          <div class="stats-grid"><div class="stat-card"><span class="stat-label">SALDO</span><strong id="money">R$ 8.420</strong><small class="up">↑ 12,4% este ano</small></div><div class="stat-card"><span class="stat-label">SAÚDE</span><strong>92<span class="unit">/100</span></strong><div class="progress"><i style="width:92%"></i></div></div><div class="stat-card"><span class="stat-label">FELICIDADE</span><strong id="happiness">88<span class="unit">/100</span></strong><div class="progress pink"><i style="width:88%"></i></div></div><div class="stat-card"><span class="stat-label">REPUTAÇÃO</span><strong id="reputation">64<span class="unit">/100</span></strong><small class="neutral">+4 desde o último ano</small></div></div>
+          <div class="main-columns"><div class="timeline-panel"><div class="panel-title"><div><h2>O que está acontecendo</h2><p>Seu feed de acontecimentos</p></div><button class="filter-btn">Mais recentes⌄</button></div><div class="event-list" id="eventList"></div></div><div class="right-column"><div class="panel quick-panel"><div class="panel-title"><div><h2>Ação rápida</h2><p>O que você quer fazer?</p></div><span class="spark">✦</span></div><div class="action-grid"><button data-action="explore"><span>⌁</span><b>Explorar</b><small>Descubra algo novo</small></button><button data-action="learn"><span>⊙</span><b>Aprender</b><small>Invista em você</small></button><button data-action="social"><span>♧</span><b>Socializar</b><small>Conecte-se</small></button><button data-action="rest"><span>☾</span><b>Descansar</b><small>Recarregue as energias</small></button></div></div><div class="panel quote-panel"><span class="quote-mark">“</span><p id="quote">A vida não é sobre encontrar a si mesmo. É sobre criar a si mesmo.</p><small>— George Bernard Shaw</small><button id="newQuote">↻ nova reflexão</button></div></div></div>
+        </div>
+        <div class="section-view hidden" id="carreiraView"><div class="page-heading"><div><p class="eyebrow">SUA JORNADA PROFISSIONAL</p><h1>Carreira <span>↗</span></h1><p class="subtitle">Construa algo que tenha a sua assinatura.</p></div><button class="primary-btn" id="jobBtn">＋ Buscar oportunidades</button></div><div class="career-hero"><div class="career-icon">✦</div><div><span class="tag">EM ASCENSÃO · NÍVEL 4</span><h2>Designer de Produto</h2><p>Estúdio Aurora · São Paulo, SP</p></div><div class="career-salary"><small>salário mensal</small><strong>R$ 7.800</strong><span>↑ 8% este ano</span></div></div><div class="career-grid"><div class="panel"><div class="panel-title"><div><h2>Habilidades</h2><p>Seu repertório cresce a cada experiência</p></div></div><div id="skills"></div></div><div class="panel goals"><div class="panel-title"><div><h2>Próximos marcos</h2><p>Pequenos passos, grandes mudanças</p></div></div><div class="goal"><span class="goal-icon done">✓</span><div><b>Portfólio publicado</b><small>Concluído em maio</small></div></div><div class="goal"><span class="goal-icon">2</span><div><b>Liderar um projeto</b><small>Faltam 2 pontos de liderança</small></div></div><div class="goal"><span class="goal-icon">3</span><div><b>Virar especialista</b><small>Alcance o nível 6</small></div></div></div></div></div>
+        <div class="section-view hidden" id="relacoesView"><div class="page-heading"><div><p class="eyebrow">SEU CÍRCULO</p><h1>Relações <span>♡</span></h1><p class="subtitle">Ninguém vive uma grande história sozinho.</p></div><button class="primary-btn" id="meetBtn">＋ Conhecer alguém</button></div><div class="people-grid" id="peopleGrid"></div></div>
+        <div class="section-view hidden" id="conquistasView"><div class="page-heading"><div><p class="eyebrow">SEU LEGADO</p><h1>Conquistas <span>✦</span></h1><p class="subtitle">As marcas que você deixa pelo caminho.</p></div></div><div class="achievements panel" id="achievements"></div></div>
+      </section>
+    </main>
+  </div>
+  <div class="toast" id="toast"></div><div class="modal-backdrop hidden" id="modal"><div class="modal"><button class="close" id="closeModal">×</button><div class="modal-icon">✦</div><h2 id="modalTitle">Uma nova oportunidade</h2><p id="modalText">O mundo está cheio de possibilidades.</p><div class="modal-actions"><button class="secondary-btn" id="modalCancel">Agora não</button><button class="primary-btn" id="modalOk">Escolher este caminho</button></div></div></div>
+  <script src="app.js"></script>
+</body>
+</html>

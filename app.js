@@ -86,7 +86,25 @@ function runAction(key, action) {
     if (previous === undefined) delete state.cooldowns[key]; else state.cooldowns[key] = previous;
   }
 }
-function openModal(title, text, action, confirm = 'Escolher este caminho') { $('#modalTitle').textContent = title; $('#modalText').textContent = text; $('#modalOk').textContent = confirm; $('#modal').classList.remove('hidden'); $('#modalOk').onclick = () => { $('#modal').classList.add('hidden'); if (action) action(); render(); }; }
+function openModal(title, text, action, confirm = 'Escolher este caminho') {
+  const actions = $('.modal-actions');
+  if (actions) actions.innerHTML = '<button class="secondary-btn" id="modalCancel">Agora não</button><button class="primary-btn" id="modalOk"></button>';
+  $('#modalTitle').textContent = title; $('#modalText').textContent = text; $('#modalOk').textContent = confirm;
+  $('#modal').classList.remove('hidden'); $('#modalCancel').onclick = closeModal;
+  $('#modalOk').onclick = () => { $('#modal').classList.add('hidden'); if (action) action(); render(); };
+}
+function openChoiceModal(title, intro, choices) {
+  $('#modalTitle').textContent = title; $('#modalText').textContent = intro;
+  const actions = $('.modal-actions');
+  actions.innerHTML = '<button class="secondary-btn" id="modalCancel">Agora não</button>';
+  choices.forEach((choice, index) => {
+    const button = document.createElement('button'); button.className = index === 0 ? 'primary-btn' : 'secondary-btn';
+    button.textContent = choice.label; button.title = choice.detail || '';
+    button.onclick = () => { $('#modal').classList.add('hidden'); choice.action(); render(); };
+    actions.appendChild(button);
+  });
+  $('#modal').classList.remove('hidden'); $('#modalCancel').onclick = closeModal;
+}
 function closeModal() { $('#modal')?.classList.add('hidden'); }
 
 function render() {
@@ -126,7 +144,10 @@ function renderFamily() {
   const summary = $('#familySummary');
   if (summary) summary.textContent = state.children.length ? `${state.children.length} filho(s) · suas decisões moldam este legado.` : 'Sua família acompanha suas escolhas.';
   const children = $('#childrenList');
-  if (children) children.innerHTML = state.children.length ? state.children.map(child => `<div class="goal"><span class="goal-icon">♡</span><div><b>${child.name}</b><small>${child.age || 0} ano(s) · ${child.adopted ? 'adotado(a)' : 'filho(a)'}</small></div></div>`).join('') : '<div class="goal"><span class="goal-icon">♡</span><div><b>Nenhum filho ainda</b><small>Construir uma família é uma escolha para o seu momento.</small></div></div>';
+  if (children) {
+    children.innerHTML = state.children.length ? state.children.map((child, index) => `<div class="goal"><span class="goal-icon">♡</span><div><b>${child.name}</b><small>${child.age || 0} ano(s) · ${child.adopted ? 'adotado(a)' : 'filho(a)'}</small></div><button class="filter-btn" data-child="${index}">Cuidar</button></div>`).join('') : '<div class="goal"><span class="goal-icon">♡</span><div><b>Nenhum filho ainda</b><small>Construir uma família é uma escolha para o seu momento.</small></div></div>';
+    $$('[data-child]', children).forEach(button => button.onclick = () => childMenu(state.children[Number(button.dataset.child)]));
+  }
   const generations = $('#generationsList');
   if (generations) generations.innerHTML = state.generations.length ? state.generations.slice().reverse().map(g => `<div class="goal"><span class="goal-icon">✦</span><div><b>${g.name} · ${g.age} anos</b><small>${g.career} · ${g.cause}</small></div></div>`).join('') : '<div class="goal"><span class="goal-icon">⌁</span><div><b>Seu legado começa aqui</b><small>Uma nova geração será registrada quando esta vida terminar.</small></div></div>';
   const generationSummary = $('#generationSummary'); if (generationSummary) generationSummary.textContent = state.generations.length ? `${state.generations.length} geração(ões) registrada(s)` : 'Nenhuma geração arquivada.';
@@ -141,7 +162,11 @@ function renderCareer() {
 }
 function renderPeople() {
   const grid = $('#peopleGrid'); if (!grid) return;
-  grid.innerHTML = state.relationships.map(person => `<div class="person"><div class="person-avatar" style="background:${person.color}">${person.initials}</div><div><h3>${person.name}</h3><p>${person.role}${person.romance > 40 ? ' · interesse romântico' : ''}</p><div class="relationship"><i style="width:${person.affinity}%"></i></div></div><button data-rel="${person.id}">Interagir</button></div>`).join('');
+  grid.innerHTML = state.relationships.map(person => {
+    const bond = person.affinity >= 80 ? 'vínculo muito próximo' : person.affinity >= 55 ? 'presença constante' : person.affinity >= 30 ? 'relação em construção' : 'vínculo distante';
+    const romantic = person.romance > 40 && person.type !== 'family' ? ' · interesse romântico' : '';
+    return `<div class="person"><div class="person-avatar" style="background:${person.color}">${person.initials}</div><div><h3>${person.name}</h3><p>${person.role}${romantic} · ${bond}</p><div class="relationship"><i style="width:${person.affinity}%"></i></div></div><button data-rel="${person.id}">Interagir</button></div>`;
+  }).join('');
   $$('[data-rel]', grid).forEach(button => button.onclick = () => relationshipMenu(state.relationships.find(p => p.id === button.dataset.rel)));
 }
 function renderHealth() {
@@ -152,15 +177,44 @@ function renderHealth() {
   const status = $('#lifeStatus'); if (status) status.textContent = state.dead ? 'Falecida' : `${state.age} anos · ${state.city}`;
 }
 function relationshipMenu(person) {
-  if (!person) return;
-  const options = person.romance >= 55 && !state.partnerId && person.type !== 'family' ? ' Talvez seja hora de falar sobre o que vocês sentem.' : '';
-  openModal(`Interagir com ${person.name}`, `A afinidade atual é ${person.affinity}/100.${options}`, () => runAction(`rel-${person.id}`, () => {
-    if (!requireEnergy(4)) return;
-    const gain = state.trait === 'gentil' ? 8 : state.trait === 'rebelde' ? 3 : 5;
-    person.affinity = clamp(person.affinity + gain); person.romance = clamp(person.romance + (person.type !== 'family' ? 2 : 0));
-    if (person.romance >= 60 && !state.partnerId && person.type !== 'family') { state.partnerId = person.id; person.role = 'Parceiro(a)'; changeStat('happiness', 8); addEvent('♡', `Você e ${person.name} ficaram juntos`, 'Uma nova fase da relação começou.', 'pink'); }
-    else { changeStat('happiness', 2); addEvent('♡', `Você esteve com ${person.name}`, 'Uma conversa sincera fortaleceu esse vínculo.', 'pink'); }
-  }), 'Conversar');
+  if (!person || state.dead) return;
+  const isFamily = person.type === 'family'; const isPartner = state.partnerId === person.id;
+  const romanceText = !isFamily ? ` Interesse romântico: ${person.romance || 0}/100.` : '';
+  const context = `${person.name} é ${person.role.toLowerCase()}. Afinidade: ${person.affinity}/100.${romanceText}${isPartner ? ' Esta relação já é uma parceria: decisões compartilhadas exigem tempo e responsabilidade.' : ''}`;
+  const choices = [
+    { label: 'Ouvir de verdade', detail: 'Custa 4 de energia; aumenta afinidade e reduz estresse.', action: () => runAction(`rel-${person.id}-listen`, () => {
+      if (!requireEnergy(4)) return;
+      person.affinity = clamp(person.affinity + (state.trait === 'gentil' ? 9 : 6)); changeStat('happiness', 3); state.stress = clamp(state.stress - 2);
+      addEvent('♡', `Você esteve presente para ${person.name}`, `Uma conversa sem pressa fortaleceu a confiança entre vocês. Afinidade agora: ${person.affinity}/100.`, 'pink');
+    }) },
+    { label: 'Fazer um programa', detail: 'Custa R$ 120 e 8 de energia; cria uma memória compartilhada.', action: () => runAction(`rel-${person.id}-date`, () => {
+      if (!requireResources(120, 8)) return;
+      person.affinity = clamp(person.affinity + 10); if (!isFamily) person.romance = clamp(person.romance + 5); changeStat('happiness', 6); changeStat('reputation', 1);
+      addEvent('✦', `Uma memória com ${person.name}`, `Vocês saíram da rotina e descobriram um novo assunto em comum. A relação ganhou mais intimidade.`);
+    }) },
+    { label: isFamily ? 'Resolver uma tensão' : 'Falar com sinceridade', detail: 'Custa 6 de energia; pode reparar um vínculo abalado, mas exige coragem.', action: () => runAction(`rel-${person.id}-honest`, () => {
+      if (!requireEnergy(6)) return;
+      const success = person.affinity >= 35 || state.trait === 'gentil'; person.affinity = clamp(person.affinity + (success ? 12 : -6)); state.stress = clamp(state.stress + (success ? -4 : 7)); changeStat('happiness', success ? 4 : -3);
+      addEvent(success ? '↗' : '⚠', success ? `Reconciliação com ${person.name}` : `Uma conversa difícil com ${person.name}`, success ? 'Vocês nomearam o que estava incomodando e combinaram uma mudança concreta.' : 'A verdade veio à tona, mas a outra pessoa ainda precisa de tempo.', success ? 'blue' : 'pink');
+    }) }
+  ];
+  if (!isFamily && !isPartner && !state.partnerId && person.romance >= 45) choices.push({ label: 'Assumir o que sente', detail: 'Custa 5 de energia; pode transformar interesse em parceria.', action: () => runAction(`rel-${person.id}-romance`, () => {
+    if (!requireEnergy(5)) return;
+    if (person.romance >= 55) { state.partnerId = person.id; person.romance = clamp(person.romance + 8); person.affinity = clamp(person.affinity + 8); person.role = 'Parceiro(a)'; changeStat('happiness', 10); addEvent('♡', `Você e ${person.name} ficaram juntos`, 'O vínculo ganhou um compromisso novo, com planos e responsabilidades compartilhadas.', 'pink'); }
+    else { person.romance = clamp(person.romance + 4); changeStat('happiness', 2); addEvent('♡', `Você abriu o coração para ${person.name}`, 'A resposta não foi definitiva, mas agora existe mais clareza entre vocês.'); }
+  }) });
+  if (isPartner) choices.push({ label: 'Planejar o próximo ano', detail: 'Custa R$ 300 e 6 de energia; fortalece planos de longo prazo.', action: () => runAction(`rel-${person.id}-future`, () => {
+    if (!requireResources(300, 6)) return; person.affinity = clamp(person.affinity + 7); state.stress = clamp(state.stress - 5); changeStat('happiness', 7); addEvent('⌂', `Planos compartilhados com ${person.name}`, 'Vocês organizaram metas, dividiram responsabilidades e saíram com uma sensação de equipe.', 'blue');
+  }) });
+  openChoiceModal(`O que fazer com ${person.name}?`, context, choices);
+}
+function childMenu(child) {
+  if (!child) return;
+  openChoiceModal(`Um momento com ${child.name}`, `${child.name} tem ${child.age || 0} ano(s). O vínculo é construído em pequenos gestos, não apenas em grandes decisões.`, [
+    { label: 'Tempo exclusivo', detail: 'Custa 6 de energia; aumenta felicidade e reduz estresse.', action: () => runAction(`child-${child.name}-time`, () => { if (!requireEnergy(6)) return; changeStat('happiness', 6); state.stress = clamp(state.stress - 3); addEvent('♡', `Você esteve com ${child.name}`, `Vocês brincaram, conversaram e criaram uma lembrança que vai atravessar esta fase.`, 'pink'); }) },
+    { label: 'Apoiar um interesse', detail: 'Custa R$ 180 e 4 de energia; investe no futuro da criança.', action: () => runAction(`child-${child.name}-support`, () => { if (!requireResources(180, 4)) return; changeStat('happiness', 4); child.age = safeNumber(child.age); addEvent('✦', `Você apoiou ${child.name}`, `Um curso, livro ou equipamento adequado à idade mostrou que os sonhos de ${child.name} importam.`); }) },
+    { label: 'Conversar sobre sentimentos', detail: 'Custa 3 de energia; torna a família mais aberta.', action: () => runAction(`child-${child.name}-talk`, () => { if (!requireEnergy(3)) return; changeStat('happiness', 3); state.stress = clamp(state.stress - 2); addEvent('☾', `Uma conversa importante com ${child.name}`, 'Você criou um espaço seguro para falar sobre medo, escola e expectativas.'); }) }
+  ]);
 }
 
 function advanceYear() {

@@ -16,8 +16,10 @@ O jogo também pode ser servido por qualquer servidor estático. `capture.sh` é
 
 - avanço anual com renda, despesas, investimentos, dívidas, crédito, saúde, energia e envelhecimento;
 - educação, habilidades, carreira, promoções, reputação e fama;
-- relações, romance, parceiro e eventos sociais;
-- família, filhos biológicos ou adotivos e painel de legado entre gerações;
+- relações com menus contextuais: escuta, programas, conversas difíceis, reconciliação, romance e planos de futuro;
+- família, filhos biológicos ou adotivos, momentos exclusivos, apoio a interesses e conversas sobre sentimentos;
+- histórico de eventos com resultados textuais, evolução de afinidade, papéis e impactos em felicidade, estresse, reputação e recursos;
+- painel de legado entre gerações;
 - patrimônio, metas financeiras, viagens e saúde;
 - atividades com requisitos de idade, energia, dinheiro e cooldown anual;
 - crime com risco de prisão, pena, multas e consequências persistentes;
